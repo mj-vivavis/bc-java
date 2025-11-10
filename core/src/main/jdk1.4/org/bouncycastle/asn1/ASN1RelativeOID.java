@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Properties;
 
 public class ASN1RelativeOID
     extends ASN1Primitive
@@ -72,7 +73,7 @@ public class ASN1RelativeOID
 
     public static ASN1RelativeOID getInstance(ASN1TaggedObject taggedObject, boolean explicit)
     {
-        return (ASN1RelativeOID)TYPE.getContextInstance(taggedObject, explicit);
+        return (ASN1RelativeOID)TYPE.getContextTagged(taggedObject, explicit);
     }
 
     public static ASN1RelativeOID tryFromID(String identifier)
@@ -229,6 +230,11 @@ public class ASN1RelativeOID
 
     static boolean isValidContents(byte[] contents)
     {
+        if (Properties.isOverrideSet("org.bouncycastle.asn1.allow_wrong_oid_enc"))
+        {
+            return true;
+        }
+
         if (contents.length < 1)
         {
             return false;

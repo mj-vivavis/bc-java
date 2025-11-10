@@ -10,6 +10,7 @@ import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.agreement.srp.SRP6Client;
 import org.bouncycastle.crypto.agreement.srp.SRP6Server;
 import org.bouncycastle.crypto.agreement.srp.SRP6VerifierGenerator;
+import org.bouncycastle.crypto.digests.GOST3411_2012_256Digest;
 import org.bouncycastle.crypto.digests.MD5Digest;
 import org.bouncycastle.crypto.digests.SHA1Digest;
 import org.bouncycastle.crypto.digests.SHA224Digest;
@@ -63,6 +64,7 @@ import org.bouncycastle.tls.crypto.TlsSRP6VerifierGenerator;
 import org.bouncycastle.tls.crypto.TlsSRPConfig;
 import org.bouncycastle.tls.crypto.TlsSecret;
 import org.bouncycastle.tls.crypto.impl.AbstractTlsCrypto;
+import org.bouncycastle.tls.crypto.impl.Tls13NullCipher;
 import org.bouncycastle.tls.crypto.impl.TlsAEADCipher;
 import org.bouncycastle.tls.crypto.impl.TlsBlockCipher;
 import org.bouncycastle.tls.crypto.impl.TlsImplUtils;
@@ -177,6 +179,12 @@ public class BcTlsCrypto
             return createChaCha20Poly1305(cryptoParams);
         case EncryptionAlgorithm.NULL:
             return createNullCipher(cryptoParams, macAlgorithm);
+        case EncryptionAlgorithm.NULL_HMAC_SHA256:
+            // NOTE: Ignores macAlgorithm
+            return create13NullCipher(cryptoParams, MACAlgorithm.hmac_sha256);
+        case EncryptionAlgorithm.NULL_HMAC_SHA384:
+            // NOTE: Ignores macAlgorithm
+            return create13NullCipher(cryptoParams, MACAlgorithm.hmac_sha384);
         case EncryptionAlgorithm.SM4_CCM:
             // NOTE: Ignores macAlgorithm
             return createCipher_SM4_CCM(cryptoParams);
@@ -184,9 +192,12 @@ public class BcTlsCrypto
             // NOTE: Ignores macAlgorithm
             return createCipher_SM4_GCM(cryptoParams);
 
+        case EncryptionAlgorithm._28147_CNT_IMIT:
         case EncryptionAlgorithm.DES40_CBC:
         case EncryptionAlgorithm.DES_CBC:
         case EncryptionAlgorithm.IDEA_CBC:
+        case EncryptionAlgorithm.KUZNYECHIK_CTR_OMAC:
+        case EncryptionAlgorithm.MAGMA_CTR_OMAC:
         case EncryptionAlgorithm.RC2_CBC_40:
         case EncryptionAlgorithm.RC4_128:
         case EncryptionAlgorithm.RC4_40:
@@ -265,6 +276,7 @@ public class BcTlsCrypto
         case CryptoHashAlgorithm.sha384:
         case CryptoHashAlgorithm.sha512:
         case CryptoHashAlgorithm.sm3:
+        case CryptoHashAlgorithm.gostr3411_2012_256:
             return true;
 
         default:
@@ -289,7 +301,7 @@ public class BcTlsCrypto
         case CryptoSignatureAlgorithm.rsa_pss_pss_sha512:
             return true;
 
-        // TODO[draft-smyshlyaev-tls12-gost-suites-10]
+        // TODO[RFC 9189]
         case CryptoSignatureAlgorithm.gostr34102012_256:
         case CryptoSignatureAlgorithm.gostr34102012_512:
 
@@ -307,11 +319,6 @@ public class BcTlsCrypto
     }
 
     public boolean hasECDHAgreement()
-    {
-        return true;
-    }
-
-    public boolean hasKemAgreement()
     {
         return true;
     }
@@ -345,9 +352,18 @@ public class BcTlsCrypto
         case EncryptionAlgorithm.SM4_GCM:
             return true;
 
+        case EncryptionAlgorithm.NULL_HMAC_SHA256:
+            return hasMacAlgorithm(MACAlgorithm.hmac_sha256);
+
+        case EncryptionAlgorithm.NULL_HMAC_SHA384:
+            return hasMacAlgorithm(MACAlgorithm.hmac_sha384);
+
+        case EncryptionAlgorithm._28147_CNT_IMIT:
         case EncryptionAlgorithm.DES_CBC:
         case EncryptionAlgorithm.DES40_CBC:
         case EncryptionAlgorithm.IDEA_CBC:
+        case EncryptionAlgorithm.KUZNYECHIK_CTR_OMAC:
+        case EncryptionAlgorithm.MAGMA_CTR_OMAC:
         case EncryptionAlgorithm.RC2_CBC_40:
         case EncryptionAlgorithm.RC4_128:
         case EncryptionAlgorithm.RC4_40:
@@ -371,6 +387,11 @@ public class BcTlsCrypto
         }
     }
 
+    public boolean hasKemAgreement()
+    {
+        return true;
+    }
+
     public boolean hasMacAlgorithm(int macAlgorithm)
     {
         switch (macAlgorithm)
@@ -389,7 +410,9 @@ public class BcTlsCrypto
 
     public boolean hasNamedGroup(int namedGroup)
     {
-        return NamedGroup.refersToASpecificGroup(namedGroup);
+        return NamedGroup.refersToASpecificCurve(namedGroup)
+            || NamedGroup.refersToASpecificFiniteField(namedGroup)
+            || NamedGroup.refersToASpecificKem(namedGroup);
     }
 
     public boolean hasRSAEncryption()
@@ -417,11 +440,13 @@ public class BcTlsCrypto
         case SignatureAlgorithm.ecdsa_brainpoolP512r1tls13_sha512:
             return true;
 
-        // TODO[draft-smyshlyaev-tls12-gost-suites-10]
+        // TODO[RFC 9189]
         case SignatureAlgorithm.gostr34102012_256:
         case SignatureAlgorithm.gostr34102012_512:
+
         // TODO[RFC 8998]
 //        case SignatureAlgorithm.sm2:
+
         default:
             return false;
         }
@@ -429,6 +454,12 @@ public class BcTlsCrypto
 
     public boolean hasSignatureAndHashAlgorithm(SignatureAndHashAlgorithm sigAndHashAlgorithm)
     {
+        int signatureScheme = SignatureScheme.from(sigAndHashAlgorithm);
+        if (SignatureScheme.isMLDSA(signatureScheme))
+        {
+            return true;
+        }
+
         short signature = sigAndHashAlgorithm.getSignature();
 
         switch (sigAndHashAlgorithm.getHash())
@@ -446,6 +477,10 @@ public class BcTlsCrypto
         {
         case SignatureScheme.sm2sig_sm3:
             return false;
+        case SignatureScheme.mldsa44:
+        case SignatureScheme.mldsa65:
+        case SignatureScheme.mldsa87:
+            return true;
         default:
         {
             short signature = SignatureScheme.getSignatureAlgorithm(signatureScheme);
@@ -464,6 +499,11 @@ public class BcTlsCrypto
     public boolean hasSRPAuthentication()
     {
         return true;
+    }
+
+    public TlsSecret createHybridSecret(TlsSecret s1, TlsSecret s2)
+    {
+        return adoptLocalSecret(Arrays.concatenate(s1.extract(), s2.extract()));
     }
 
     public TlsSecret createSecret(byte[] data)
@@ -508,6 +548,8 @@ public class BcTlsCrypto
             return new SHA512Digest((SHA512Digest)digest);
         case CryptoHashAlgorithm.sm3:
             return new SM3Digest((SM3Digest)digest);
+        case CryptoHashAlgorithm.gostr3411_2012_256:
+            return new GOST3411_2012_256Digest((GOST3411_2012_256Digest)digest);
         default:
             throw new IllegalArgumentException("invalid CryptoHashAlgorithm: " + cryptoHashAlgorithm);
         }
@@ -531,6 +573,8 @@ public class BcTlsCrypto
             return new SHA512Digest();
         case CryptoHashAlgorithm.sm3:
             return new SM3Digest();
+        case CryptoHashAlgorithm.gostr3411_2012_256:
+            return new GOST3411_2012_256Digest();
         default:
             throw new IllegalArgumentException("invalid CryptoHashAlgorithm: " + cryptoHashAlgorithm);
         }
@@ -580,7 +624,7 @@ public class BcTlsCrypto
     protected TlsCipher createChaCha20Poly1305(TlsCryptoParameters cryptoParams) throws IOException
     {
         return new TlsAEADCipher(cryptoParams, new BcChaCha20Poly1305(true), new BcChaCha20Poly1305(false), 32, 16,
-            TlsAEADCipher.AEAD_CHACHA20_POLY1305);
+            TlsAEADCipher.AEAD_CHACHA20_POLY1305, null);
     }
 
     protected TlsAEADCipher createCipher_AES_CCM(TlsCryptoParameters cryptoParams, int cipherKeySize, int macSize)
@@ -589,7 +633,8 @@ public class BcTlsCrypto
         BcTlsAEADCipherImpl encrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_AES_CCM(), true);
         BcTlsAEADCipherImpl decrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_AES_CCM(), false);
 
-        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_CCM);
+        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_CCM,
+            null);
     }
 
     protected TlsAEADCipher createCipher_AES_GCM(TlsCryptoParameters cryptoParams, int cipherKeySize, int macSize)
@@ -598,7 +643,7 @@ public class BcTlsCrypto
         BcTlsAEADCipherImpl encrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_AES_GCM(), true);
         BcTlsAEADCipherImpl decrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_AES_GCM(), false);
 
-        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_GCM);
+        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_GCM, null);
     }
 
     protected TlsAEADCipher createCipher_ARIA_GCM(TlsCryptoParameters cryptoParams, int cipherKeySize, int macSize)
@@ -607,7 +652,7 @@ public class BcTlsCrypto
         BcTlsAEADCipherImpl encrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_ARIA_GCM(), true);
         BcTlsAEADCipherImpl decrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_ARIA_GCM(), false);
 
-        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_GCM);
+        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_GCM, null);
     }
 
     protected TlsAEADCipher createCipher_Camellia_GCM(TlsCryptoParameters cryptoParams, int cipherKeySize, int macSize)
@@ -616,7 +661,7 @@ public class BcTlsCrypto
         BcTlsAEADCipherImpl encrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_Camellia_GCM(), true);
         BcTlsAEADCipherImpl decrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_Camellia_GCM(), false);
 
-        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_GCM);
+        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, cipherKeySize, macSize, TlsAEADCipher.AEAD_GCM, null);
     }
 
     protected TlsCipher createCipher_CBC(TlsCryptoParameters cryptoParams, int encryptionAlgorithm, int cipherKeySize,
@@ -637,7 +682,7 @@ public class BcTlsCrypto
         BcTlsAEADCipherImpl encrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_SM4_CCM(), true);
         BcTlsAEADCipherImpl decrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_SM4_CCM(), false);
 
-        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, 16, 16, TlsAEADCipher.AEAD_CCM);
+        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, 16, 16, TlsAEADCipher.AEAD_CCM, null);
     }
 
     protected TlsAEADCipher createCipher_SM4_GCM(TlsCryptoParameters cryptoParams)
@@ -646,7 +691,13 @@ public class BcTlsCrypto
         BcTlsAEADCipherImpl encrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_SM4_GCM(), true);
         BcTlsAEADCipherImpl decrypt = new BcTlsAEADCipherImpl(createAEADBlockCipher_SM4_GCM(), false);
 
-        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, 16, 16, TlsAEADCipher.AEAD_GCM);
+        return new TlsAEADCipher(cryptoParams, encrypt, decrypt, 16, 16, TlsAEADCipher.AEAD_GCM, null);
+    }
+
+    protected Tls13NullCipher create13NullCipher(TlsCryptoParameters cryptoParams, int macAlgorithm)
+        throws IOException
+    {
+        return new Tls13NullCipher(cryptoParams, createHMAC(macAlgorithm), createHMAC(macAlgorithm));
     }
 
     protected TlsNullCipher createNullCipher(TlsCryptoParameters cryptoParams, int macAlgorithm)
@@ -688,7 +739,7 @@ public class BcTlsCrypto
 
     protected AEADBlockCipher createCCMMode(BlockCipher engine)
     {
-        return new CCMBlockCipher(engine);
+        return CCMBlockCipher.newInstance(engine);
     }
 
     protected AEADBlockCipher createGCMMode(BlockCipher engine)

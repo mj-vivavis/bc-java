@@ -26,17 +26,13 @@ public class HQCKEMGenerator
         byte[] K = new byte[key.getParameters().getSHA512_BYTES()];
         byte[] u = new byte[key.getParameters().getN_BYTES()];
         byte[] v = new byte[key.getParameters().getN1N2_BYTES()];
-        byte[] d = new byte[key.getParameters().getSHA512_BYTES()];
         byte[] salt = new byte[key.getParameters().getSALT_SIZE_BYTES()];
         byte[] pk = key.getPublicKey();
-        byte[] seed = new byte[48];
 
-        sr.nextBytes(seed);
+        engine.encaps(u, v, K, pk, salt, sr);
 
-        engine.encaps(u, v, K, d, pk, seed, salt);
+        byte[] cipherText = Arrays.concatenate(u, v, salt);
 
-        byte[] cipherText = Arrays.concatenate(u, v, d, salt);
-
-        return new SecretWithEncapsulationImpl(Arrays.copyOfRange(K, 0, key.getParameters().getK()), cipherText);
+        return new SecretWithEncapsulationImpl(Arrays.copyOfRange(K, 0, 32), cipherText);
     }
 }

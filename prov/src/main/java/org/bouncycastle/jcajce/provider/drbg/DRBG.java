@@ -53,6 +53,14 @@ public class DRBG
 {
     private static final String PREFIX = DRBG.class.getName();
 
+    private static int get256BitsEffectiveEntropySize()
+    {
+        // by default we assume .9 bits per real bit
+        int effectiveBits = Properties.asInteger("org.bouncycastle.drbg.effective_256bits_entropy", 282);
+
+        return ((effectiveBits + 7) / 8) * 8;
+    }
+
     // {"Provider class name","SecureRandomSpi class name"}
     private static final String[][] initialEntropySourceNames = new String[][]
         {
@@ -223,7 +231,8 @@ public class DRBG
 
     // unfortunately new SecureRandom() can cause a regress and it's the only reliable way of getting access
     // to the JVM's seed generator.
-    private static EntropySourceProvider createInitialEntropySource()
+
+    private static EntropySourceProvider createCoreEntropySourceProvider()
     {
         boolean hasGetInstanceStrong = AccessController.doPrivileged(new PrivilegedAction<Boolean>()
         {
@@ -254,20 +263,25 @@ public class DRBG
                     }
                     catch (Exception e)
                     {
-                        return new CoreSecureRandom(findSource());
+                        return null;
                     }
                 }
             });
+
+            if (strong == null)
+            {
+                return createInitialEntropySource();
+            }
 
             return new IncrementalEntropySourceProvider(strong, true);
         }
         else
         {
-            return new IncrementalEntropySourceProvider(new CoreSecureRandom(findSource()), true);
+            return createInitialEntropySource();
         }
     }
 
-    private static EntropySourceProvider createCoreEntropySourceProvider()
+    private static EntropySourceProvider createInitialEntropySource()
     {
         String source = AccessController.doPrivileged(new PrivilegedAction<String>()
         {
@@ -279,7 +293,7 @@ public class DRBG
 
         if (source == null)
         {
-            return createInitialEntropySource();
+            return new IncrementalEntropySourceProvider(new CoreSecureRandom(findSource()), true);
         }
         else
         {
@@ -289,7 +303,7 @@ public class DRBG
             }
             catch (Exception e)
             {
-                return createInitialEntropySource();
+                return new IncrementalEntropySourceProvider(new CoreSecureRandom(findSource()), true);
             }
         }
     }
@@ -457,7 +471,7 @@ public class DRBG
             EntropySourceProvider entropyProvider = createCoreEntropySourceProvider();
             bytesRequired = (bitsRequired + 7) / 8;
             // remember for the seed generator we need the correct security strength for SHA-512
-            entropySource = new SignallingEntropySource(entropyDaemon, seedAvailable, entropyProvider, 256);
+            entropySource = new SignallingEntropySource(entropyDaemon, seedAvailable, entropyProvider, get256BitsEffectiveEntropySize());
             drbg = new SP800SecureRandomBuilder(new EntropySourceProvider()
             {
                 public EntropySource get(final int bitsRequired)
@@ -586,7 +600,7 @@ public class DRBG
             EntropySourceProvider entropyProvider = createCoreEntropySourceProvider();
             bytesRequired = (bitsRequired + 7) / 8;
             // remember for the seed generator we need the correct security strength for SHA-512
-            entropySource = new OneShotSignallingEntropySource(seedAvailable, entropyProvider, 256);
+            entropySource = new OneShotSignallingEntropySource(seedAvailable, entropyProvider, get256BitsEffectiveEntropySize());
             drbg = new SP800SecureRandomBuilder(new EntropySourceProvider()
             {
                 public EntropySource get(final int bitsRequired)

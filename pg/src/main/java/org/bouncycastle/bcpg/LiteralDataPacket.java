@@ -16,13 +16,25 @@ public class LiteralDataPacket
     long    modDate;
 
     LiteralDataPacket(
-        BCPGInputStream    in)
+            BCPGInputStream    in)
+            throws IOException
+    {
+        this(in, false);
+    }
+
+    LiteralDataPacket(
+        BCPGInputStream    in,
+        boolean newPacketFormat)
         throws IOException
     {
-        super(in, LITERAL_DATA);
+        super(in, LITERAL_DATA, newPacketFormat);
 
         format = in.read();
         int    l = in.read();
+        if (l < 0)
+        {
+            throw new MalformedPacketException("File name size cannot be negative.");
+        }
 
         fileName = new byte[l];
         for (int i = 0; i != fileName.length; i++)
@@ -35,7 +47,7 @@ public class LiteralDataPacket
             fileName[i] = (byte)ch;
         }
 
-        modDate = ((long)in.read() << 24) | (in.read() << 16) | (in.read() << 8) | in.read();
+        modDate = StreamUtil.readTime(in);
         if (modDate < 0)
         {
             throw new IOException("literal data truncated in header");
@@ -55,7 +67,7 @@ public class LiteralDataPacket
      */
     public long getModificationTime()
     {
-        return modDate * 1000L;
+        return modDate;
     }
 
     /**

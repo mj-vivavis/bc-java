@@ -36,10 +36,17 @@ public class CMSAuthEnvelopedDataGenerator
         try
         {
             OutputStream cOut = contentEncryptor.getOutputStream(bOut);
-
-            content.write(cOut);
-
-            authenticatedAttrSet = CMSUtils.processAuthAttrSet(authAttrsGenerator, contentEncryptor);
+            if (CMSAlgorithm.ChaCha20Poly1305.equals(contentEncryptor.getAlgorithmIdentifier().getAlgorithm()))
+            {
+                // AEAD Ciphers process AAD at first
+                authenticatedAttrSet = CMSUtils.processAuthAttrSet(authAttrsGenerator, contentEncryptor);
+                content.write(cOut);
+            }
+            else
+            {
+                content.write(cOut);
+                authenticatedAttrSet = CMSUtils.processAuthAttrSet(authAttrsGenerator, contentEncryptor);
+            }
 
             cOut.close();
         }
@@ -66,7 +73,7 @@ public class CMSAuthEnvelopedDataGenerator
      * generate an auth-enveloped object that contains an CMS Enveloped Data
      * object using the given provider.
      *
-     * @param content the content to be encrypted
+     * @param content          the content to be encrypted
      * @param contentEncryptor the symmetric key based encryptor to encrypt the content with.
      */
     public CMSAuthEnvelopedData generate(

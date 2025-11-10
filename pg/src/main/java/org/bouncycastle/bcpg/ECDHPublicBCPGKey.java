@@ -7,7 +7,17 @@ import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
- * base class for an ECDH Public Key.
+ * Base class for an ECDH Public Key.
+ * This type is for use with {@link PublicKeyAlgorithmTags#ECDH}.
+ * The specific curve is identified by providing an OID.
+ * Regarding X25519, X448, consider the following:
+ * Modern implementations use dedicated key types {@link X25519PublicBCPGKey}, {@link X448PublicBCPGKey} along with
+ * dedicated algorithm tags {@link PublicKeyAlgorithmTags#X25519}, {@link PublicKeyAlgorithmTags#X448}.
+ * If you want to be compatible with legacy applications however, you should use this class instead.
+ * Note though, that for v6 keys, {@link X25519PublicBCPGKey} or {@link X448PublicBCPGKey} MUST be used for X25519, X448.
+ *
+ * @see <a href="https://www.rfc-editor.org/rfc/rfc9580.html#name-algorithm-specific-part-for-ecd">
+ *     OpenPGP - Algorithm-Specific Parts for ECDH Keys</a>
  */
 public class ECDHPublicBCPGKey
     extends ECPublicBCPGKey
@@ -26,12 +36,12 @@ public class ECDHPublicBCPGKey
         super(in);
 
         int length = in.read();
-        byte[] kdfParameters = new byte[length];
-        if (kdfParameters.length != 3)
+        if (length != 3)
         {
-            throw new IllegalStateException("kdf parameters size of 3 expected.");
+            throw new MalformedPacketException("KDF parameters size of 3 expected.");
         }
 
+        byte[] kdfParameters = new byte[length];
         in.readFully(kdfParameters);
 
         reserved = kdfParameters[0];

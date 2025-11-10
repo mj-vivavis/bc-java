@@ -33,10 +33,18 @@ public class PublicKeyEncSessionPacket
     private byte[] keyFingerprint;  // v6
 
     PublicKeyEncSessionPacket(
-        BCPGInputStream in)
+            BCPGInputStream in)
+            throws IOException
+    {
+        this(in, false);
+    }
+
+    PublicKeyEncSessionPacket(
+        BCPGInputStream in,
+        boolean newPacketFormat)
         throws IOException
     {
-        super(PUBLIC_KEY_ENC_SESSION);
+        super(PUBLIC_KEY_ENC_SESSION, newPacketFormat);
 
         version = in.read();
 
@@ -47,17 +55,39 @@ public class PublicKeyEncSessionPacket
         else if (version == VERSION_6)
         {
             int keyInfoLen = in.read();
+            if (keyInfoLen < 0)
+            {
+                throw new MalformedPacketException("Key Info Length cannot be negative: " + keyInfoLen);
+            }
             if (keyInfoLen == 0)
             {
                 // anon recipient
                 keyVersion = 0;
                 keyFingerprint = new byte[0];
+                keyID = 0L;
             }
             else
             {
                 keyVersion = in.read();
                 keyFingerprint = new byte[keyInfoLen - 1];
                 in.readFully(keyFingerprint);
+                // Derived key-ID from fingerprint
+                // TODO: Replace with getKeyIdentifier
+                try
+                {
+                    if (keyVersion == PublicKeyPacket.VERSION_4)
+                    {
+                        keyID = FingerprintUtil.keyIdFromV4Fingerprint(keyFingerprint);
+                    }
+                    else
+                    {
+                        keyID = FingerprintUtil.keyIdFromV6Fingerprint(keyFingerprint);
+                    }
+                }
+                catch (IllegalArgumentException e)
+                {
+                    throw new MalformedPacketException("Malformed fingerprint encoding.", e);
+                }
             }
         }
         else
@@ -257,9 +287,16 @@ public class PublicKeyEncSessionPacket
         }
         else if (version == VERSION_6)
         {
-            pOut.write(keyFingerprint.length + 1);
-            pOut.write(keyVersion);
-            pOut.write(keyFingerprint);
+            if (keyFingerprint.length != 0)
+            {
+                pOut.write(keyFingerprint.length + 1);
+                pOut.write(keyVersion);
+                pOut.write(keyFingerprint);
+            }
+            else
+            {
+                pOut.write(0);
+            }
         }
 
         pOut.write(algorithm);
@@ -271,6 +308,6 @@ public class PublicKeyEncSessionPacket
 
         pOut.close();
 
-        out.writePacket(PUBLIC_KEY_ENC_SESSION, bOut.toByteArray());
+        out.writePacket(hasNewPacketFormat(), PUBLIC_KEY_ENC_SESSION, bOut.toByteArray());
     }
 }

@@ -75,6 +75,41 @@ public abstract class ASN1TaggedObject
         return ASN1Util.getExplicitBaseTagged(checkInstance(taggedObject, declaredExplicit), tagClass, tagNo);
     }
 
+    public static ASN1TaggedObject getOptional(ASN1Encodable element)
+    {
+        if (element == null)
+        {
+            throw new NullPointerException("'element' cannot be null");
+        }
+
+        if (element instanceof ASN1TaggedObject)
+        {
+            return (ASN1TaggedObject)element;
+        }
+
+        return null;
+    }
+
+    public static ASN1TaggedObject getOptional(ASN1Encodable element, int tagClass)
+    {
+        ASN1TaggedObject taggedObject = getOptional(element);
+        if (taggedObject != null && taggedObject.hasTagClass(tagClass))
+        {
+            return taggedObject;
+        }
+        return null;
+    }
+
+    public static ASN1TaggedObject getOptional(ASN1Encodable element, int tagClass, int tagNo)
+    {
+        ASN1TaggedObject taggedObject = getOptional(element);
+        if (taggedObject != null && taggedObject.hasTag(tagClass, tagNo))
+        {
+            return taggedObject;
+        }
+        return null;
+    }
+
     private static ASN1TaggedObject checkInstance(Object obj)
     {
         if (obj == null)
@@ -358,7 +393,7 @@ public abstract class ASN1TaggedObject
         {
             if (!isExplicit())
             {
-                throw new IllegalStateException("object explicit - implicit expected.");
+                throw new IllegalStateException("object implicit - explicit expected.");
             }
 
             return universalType.checkedCast(obj.toASN1Primitive());

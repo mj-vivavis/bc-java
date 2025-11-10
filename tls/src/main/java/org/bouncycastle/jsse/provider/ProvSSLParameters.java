@@ -29,7 +29,7 @@ final class ProvSSLParameters
         return Collections.unmodifiableList(new ArrayList<T>(list));
     }
 
-    private final ProvSSLContextSpi context;
+    private final ContextData contextData;
 
     private String[] cipherSuites;
     private String[] protocols;
@@ -39,20 +39,22 @@ final class ProvSSLParameters
     private BCAlgorithmConstraints algorithmConstraints = ProvAlgorithmConstraints.DEFAULT;
     private List<BCSNIServerName> sniServerNames;
     private List<BCSNIMatcher> sniMatchers;
-    private boolean useCipherSuitesOrder = true;
+    private boolean useCipherSuitesOrder = false;
+    private boolean useNamedGroupsOrder = false;
     private boolean enableRetransmissions = true;
     private int maximumPacketSize = 0;
     private String[] applicationProtocols = TlsUtils.EMPTY_STRINGS;
     private String[] signatureSchemes = null;
+    private String[] signatureSchemesCert = null;
     private String[] namedGroups = null;
 
     private BCApplicationProtocolSelector<SSLEngine> engineAPSelector;
     private BCApplicationProtocolSelector<SSLSocket> socketAPSelector;
     private ProvSSLSession sessionToResume;
 
-    ProvSSLParameters(ProvSSLContextSpi context, String[] cipherSuites, String[] protocols)
+    ProvSSLParameters(ContextData contextData, String[] cipherSuites, String[] protocols)
     {
-        this.context = context;
+        this.contextData = contextData;
 
         this.cipherSuites = cipherSuites;
         this.protocols = protocols;
@@ -60,7 +62,7 @@ final class ProvSSLParameters
 
     ProvSSLParameters copy()
     {
-        ProvSSLParameters p = new ProvSSLParameters(context, cipherSuites, protocols);
+        ProvSSLParameters p = new ProvSSLParameters(contextData, cipherSuites, protocols);
         p.wantClientAuth = wantClientAuth;
         p.needClientAuth = needClientAuth;
         p.endpointIdentificationAlgorithm = endpointIdentificationAlgorithm;
@@ -68,10 +70,12 @@ final class ProvSSLParameters
         p.sniServerNames = sniServerNames;
         p.sniMatchers = sniMatchers;
         p.useCipherSuitesOrder = useCipherSuitesOrder;
+        p.useNamedGroupsOrder = useNamedGroupsOrder;
         p.enableRetransmissions = enableRetransmissions;
         p.maximumPacketSize = maximumPacketSize;
         p.applicationProtocols = applicationProtocols;
         p.signatureSchemes = signatureSchemes;
+        p.signatureSchemesCert = signatureSchemesCert;
         p.namedGroups = namedGroups;
         p.engineAPSelector = engineAPSelector;
         p.socketAPSelector = socketAPSelector;
@@ -104,7 +108,7 @@ final class ProvSSLParameters
 
     public void setCipherSuites(String[] cipherSuites)
     {
-        this.cipherSuites = context.getSupportedCipherSuites(cipherSuites);
+        this.cipherSuites = contextData.getSupportedCipherSuites(cipherSuites);
     }
 
     void setCipherSuitesArray(String[] cipherSuites)
@@ -126,7 +130,7 @@ final class ProvSSLParameters
 
     public void setProtocols(String[] protocols)
     {
-        if (!context.isSupportedProtocols(protocols))
+        if (!contextData.isSupportedProtocols(protocols))
         {
             throw new IllegalArgumentException("'protocols' cannot be null, or contain unsupported protocols");
         }
@@ -212,6 +216,16 @@ final class ProvSSLParameters
         this.useCipherSuitesOrder = useCipherSuitesOrder;
     }
 
+    public boolean getUseNamedGroupsOrder()
+    {
+        return useNamedGroupsOrder;
+    }
+
+    public void setUseNamedGroupsOrder(boolean useNamedGroupsOrder)
+    {
+        this.useNamedGroupsOrder = useNamedGroupsOrder;
+    }
+
     public boolean getEnableRetransmissions()
     {
         return enableRetransmissions;
@@ -255,6 +269,16 @@ final class ProvSSLParameters
     public void setSignatureSchemes(String[] signatureSchemes)
     {
         this.signatureSchemes = TlsUtils.clone(signatureSchemes);
+    }
+
+    public String[] getSignatureSchemesCert()
+    {
+        return TlsUtils.clone(signatureSchemesCert);
+    }
+
+    public void setSignatureSchemesCert(String[] signatureSchemesCert)
+    {
+        this.signatureSchemesCert = TlsUtils.clone(signatureSchemesCert);
     }
 
     public String[] getNamedGroups()

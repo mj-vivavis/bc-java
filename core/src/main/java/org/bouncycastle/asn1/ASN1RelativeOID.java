@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Properties;
 
 public class ASN1RelativeOID
     extends ASN1Primitive
@@ -70,9 +71,14 @@ public class ASN1RelativeOID
         throw new IllegalArgumentException("illegal object in getInstance: " + obj.getClass().getName());
     }
 
-    public static ASN1RelativeOID getInstance(ASN1TaggedObject taggedObject, boolean explicit)
+    public static ASN1RelativeOID getInstance(ASN1TaggedObject taggedObject, boolean declaredExplicit)
     {
-        return (ASN1RelativeOID)TYPE.getContextInstance(taggedObject, explicit);
+        return (ASN1RelativeOID)TYPE.getContextTagged(taggedObject, declaredExplicit);
+    }
+
+    public static ASN1RelativeOID getTagged(ASN1TaggedObject taggedObject, boolean declaredExplicit)
+    {
+        return (ASN1RelativeOID)TYPE.getTagged(taggedObject, declaredExplicit);
     }
 
     public static ASN1RelativeOID tryFromID(String identifier)
@@ -122,11 +128,29 @@ public class ASN1RelativeOID
     {
         checkIdentifier(branchID);
 
-        byte[] branchContents = parseIdentifier(branchID);
-        checkContentsLength(this.contents.length + branchContents.length);
+        byte[] contents;
+        if (branchID.length() <= 2)
+        {
+            checkContentsLength(this.contents.length + 1);
+            int subID = branchID.charAt(0) - '0';
+            if (branchID.length() == 2)
+            {
+                subID *= 10;
+                subID += branchID.charAt(1) - '0';
+            }
 
-        byte[] contents = Arrays.concatenate(this.contents, branchContents);
-        String identifier = getId() + "." + branchID;
+            contents = Arrays.append(this.contents, (byte)subID);
+        }
+        else
+        {
+            byte[] branchContents = parseIdentifier(branchID);
+            checkContentsLength(this.contents.length + branchContents.length);
+
+            contents = Arrays.concatenate(this.contents, branchContents);
+        }
+
+        String rootID = getId();
+        String identifier = rootID + "." + branchID;
 
         return new ASN1RelativeOID(contents, identifier);
     }
@@ -227,6 +251,11 @@ public class ASN1RelativeOID
 
     static boolean isValidContents(byte[] contents)
     {
+        if (Properties.isOverrideSet("org.bouncycastle.asn1.allow_wrong_oid_enc"))
+        {
+            return true;
+        }
+
         if (contents.length < 1)
         {
             return false;
@@ -236,7 +265,9 @@ public class ASN1RelativeOID
         for (int i = 0; i < contents.length; ++i)
         {
             if (subIDStart && (contents[i] & 0xff) == 0x80)
+            {
                 return false;
+            }
 
             subIDStart = (contents[i] & 0x80) == 0;
         }
@@ -282,7 +313,7 @@ public class ASN1RelativeOID
 
     static String parseContents(byte[] contents)
     {
-        StringBuffer objId = new StringBuffer();
+        StringBuilder objId = new StringBuilder();
         long value = 0;
         BigInteger bigValue = null;
         boolean first = true;

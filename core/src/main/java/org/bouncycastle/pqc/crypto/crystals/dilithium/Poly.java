@@ -580,7 +580,7 @@ class Poly
         byte[] buf = new byte[symmetric.stream256BlockBytes];
 
         SHAKEDigest shake256Digest = new SHAKEDigest(256);
-        shake256Digest.update(seed, 0, DilithiumEngine.SeedBytes);
+        shake256Digest.update(seed, 0, engine.getDilithiumCTilde());
         shake256Digest.doOutput(buf, 0, symmetric.stream256BlockBytes);
 
         signs = (long)0;
@@ -786,7 +786,7 @@ class Poly
 
     public String toString()
     {
-        StringBuffer out = new StringBuffer();
+        StringBuilder out = new StringBuilder();
         out.append("[");
         for (int i = 0; i < coeffs.length; i++)
         {

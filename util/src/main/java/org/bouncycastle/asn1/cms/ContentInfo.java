@@ -71,7 +71,7 @@ public class ContentInfo
         ASN1TaggedObject obj,
         boolean explicit)
     {
-        return getInstance(ASN1Sequence.getInstance(obj, explicit));
+        return new ContentInfo(ASN1Sequence.getInstance(obj, explicit));
     }
 
     private ContentInfo(
@@ -104,6 +104,11 @@ public class ContentInfo
         ASN1ObjectIdentifier contentType,
         ASN1Encodable        content)
     {
+        if (contentType == null)
+        {
+            throw new NullPointerException("'contentType' cannot be null");
+        }
+
         this.contentType = contentType;
         this.content = content;
         if (content != null)

@@ -435,6 +435,8 @@ public class X500NameTest
             fail("strict comparison failed");
         }
 
+        equalityTest(new X500Name(""), new X500Name(""));
+
         //
         // inequality to sequences
         //
@@ -663,6 +665,10 @@ public class X500NameTest
         {
             fail("padded equality test failed");
         }
+
+        isTrue(BCStyle.INSTANCE.attrNameToOID("jurisdictionCountry").equals(BCStyle.JURISDICTION_C));
+        isTrue(BCStyle.INSTANCE.attrNameToOID("jurisdictionState").equals(BCStyle.JURISDICTION_ST));
+        isTrue(BCStyle.INSTANCE.attrNameToOID("jurisdictionLocality").equals(BCStyle.JURISDICTION_L));
     }
 
     private String getValue(RDN vl)

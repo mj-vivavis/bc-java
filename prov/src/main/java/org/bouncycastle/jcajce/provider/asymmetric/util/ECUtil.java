@@ -314,7 +314,14 @@ public class ECUtil
     public static ASN1ObjectIdentifier getNamedCurveOid(
         String curveName)
     {
-        if (null == curveName || curveName.length() < 1)
+        if (null == curveName)
+        {
+            return null;
+        }
+
+        curveName = curveName.trim();
+
+        if (curveName.length() == 0)
         {
             return null;
         }
@@ -389,7 +396,7 @@ public class ECUtil
 
     public static String privateKeyToString(String algorithm, BigInteger d, org.bouncycastle.jce.spec.ECParameterSpec spec)
     {
-        StringBuffer buf = new StringBuffer();
+        StringBuilder buf = new StringBuilder();
         String nl = Strings.lineSeparator();
 
         org.bouncycastle.math.ec.ECPoint q = new FixedPointCombMultiplier().multiply(spec.getG(), d).normalize();
@@ -404,7 +411,7 @@ public class ECUtil
 
     public static String publicKeyToString(String algorithm, org.bouncycastle.math.ec.ECPoint q, org.bouncycastle.jce.spec.ECParameterSpec spec)
     {
-        StringBuffer buf = new StringBuffer();
+        StringBuilder buf = new StringBuilder();
         String nl = Strings.lineSeparator();
 
         buf.append(algorithm);

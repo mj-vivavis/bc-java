@@ -48,7 +48,8 @@ class OperatorHelper
         }
         catch (NoSuchAlgorithmException e)
         {
-            if (algorithm >= HashAlgorithmTags.SHA256 && algorithm <= HashAlgorithmTags.SHA224)
+            if (algorithm == HashAlgorithmTags.SHA1
+                || (algorithm >= HashAlgorithmTags.SHA256 && algorithm <= HashAlgorithmTags.SHA224))
             {
                 dig = helper.createMessageDigest("SHA-" + digestName.substring(3));
             }
@@ -202,7 +203,7 @@ class OperatorHelper
         }
     }
 
-    private Signature createSignature(String cipherName)
+    Signature createSignature(String cipherName)
         throws PGPException
     {
         try
@@ -247,6 +248,7 @@ class OperatorHelper
 
         return createSignature(PGPUtil.getDigestName(hashAlgorithm) + "with" + encAlg);
     }
+
 
     public AlgorithmParameters createAlgorithmParameters(String algorithm)
         throws NoSuchProviderException, NoSuchAlgorithmException

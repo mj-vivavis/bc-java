@@ -1,6 +1,5 @@
 package org.bouncycastle.pqc.crypto.hqc;
 
-
 import org.bouncycastle.crypto.EncapsulatedSecretExtractor;
 import org.bouncycastle.util.Arrays;
 
@@ -9,7 +8,7 @@ public class HQCKEMExtractor
 {
     private HQCEngine engine;
 
-    private HQCKeyParameters key;
+    private final HQCKeyParameters key;
 
     public HQCKEMExtractor(HQCPrivateKeyParameters privParams)
     {
@@ -24,18 +23,17 @@ public class HQCKEMExtractor
 
     public byte[] extractSecret(byte[] encapsulation)
     {
-        byte[] session_key = new byte[engine.getSessionKeySize()];
+        byte[] session_key = new byte[64];
         HQCPrivateKeyParameters secretKey = (HQCPrivateKeyParameters)key;
         byte[] sk = secretKey.getPrivateKey();
 
         engine.decaps(session_key, encapsulation, sk);
 
-        return Arrays.copyOfRange(session_key, 0, key.getParameters().getK());
+        return Arrays.copyOfRange(session_key, 0, 32);
     }
 
     public int getEncapsulationLength()
-    {
-                                                                                        // Hash + salt
-        return key.getParameters().getN_BYTES() + key.getParameters().getN1N2_BYTES() + 64 + 16;
+    {         // Hash + salt
+        return key.getParameters().getN_BYTES() + key.getParameters().getN1N2_BYTES() + 16;
     }
 }

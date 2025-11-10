@@ -154,7 +154,7 @@ public abstract class TlsCryptoTest
         case SignatureAlgorithm.rsa_pss_rsae_sha512:
             return loadCredentialedSigner(cryptoParams, "rsa-sign", signatureAndHashAlgorithm);
 
-        // TODO[draft-smyshlyaev-tls12-gost-suites-10] Add test resources for these
+        // TODO[RFC 9189] Add test resources for these
         case SignatureAlgorithm.gostr34102012_256:
         case SignatureAlgorithm.gostr34102012_512:
 
@@ -187,6 +187,12 @@ public abstract class TlsCryptoTest
         case SignatureScheme.rsa_pss_rsae_sha384:
         case SignatureScheme.rsa_pss_rsae_sha512:
             return loadCredentialedSigner(cryptoParams, "rsa-sign", signatureAndHashAlgorithm);
+        case SignatureScheme.mldsa44:
+            return loadCredentialedSigner(cryptoParams, "ml_dsa_44", signatureAndHashAlgorithm);
+        case SignatureScheme.mldsa65:
+            return loadCredentialedSigner(cryptoParams, "ml_dsa_65", signatureAndHashAlgorithm);
+        case SignatureScheme.mldsa87:
+            return loadCredentialedSigner(cryptoParams, "ml_dsa_87", signatureAndHashAlgorithm);
 
         // TODO[tls] Add test resources for these
         case SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256:
@@ -218,6 +224,14 @@ public abstract class TlsCryptoTest
             implTestDHDomain(new TlsDHConfig(namedGroup, false));
             implTestDHDomain(new TlsDHConfig(namedGroup, true));
         }
+    }
+
+    public void testDHExplicit() throws Exception
+    {
+        if (!crypto.hasDHAgreement())
+        {
+            return;
+        }
 
         new DefaultTlsDHGroupVerifier()
         {{
@@ -233,9 +247,10 @@ public abstract class TlsCryptoTest
                 assertSame(dhGroup, TlsDHUtils.getStandardGroupForDHParameters(p, g));
 
                 int namedGroup = TlsDHUtils.getNamedGroupForDHParameters(p, g);
+
+                // Named groups tested elsewhere
                 if (NamedGroup.refersToASpecificFiniteField(namedGroup))
                 {
-                    // Already tested the named groups
                     continue;
                 }
 
@@ -444,9 +459,9 @@ public abstract class TlsCryptoTest
 
     public void testHKDFExpandLimit()
     {
-        int[] hashes = new int[] { CryptoHashAlgorithm.md5, CryptoHashAlgorithm.sha1, CryptoHashAlgorithm.sha224,
+        int[] hashes = new int[]{ CryptoHashAlgorithm.md5, CryptoHashAlgorithm.sha1, CryptoHashAlgorithm.sha224,
             CryptoHashAlgorithm.sha256, CryptoHashAlgorithm.sha384, CryptoHashAlgorithm.sha512,
-            CryptoHashAlgorithm.sm3 };
+            CryptoHashAlgorithm.sm3, CryptoHashAlgorithm.gostr3411_2012_256 };
 
         for (int i = 0; i < hashes.length; ++i)
         {
@@ -561,7 +576,7 @@ public abstract class TlsCryptoTest
         }
 
         // Signature algorithms usable with HashAlgorithm.Intrinsic in TLS 1.2
-        short[] intrinsicSignatureAlgorithms = new short[] { SignatureAlgorithm.ed25519, SignatureAlgorithm.ed448,
+        short[] intrinsicSignatureAlgorithms = new short[]{ SignatureAlgorithm.ed25519, SignatureAlgorithm.ed448,
             SignatureAlgorithm.gostr34102012_256, SignatureAlgorithm.gostr34102012_512,
             SignatureAlgorithm.rsa_pss_pss_sha256, SignatureAlgorithm.rsa_pss_pss_sha384,
             SignatureAlgorithm.rsa_pss_pss_sha512, SignatureAlgorithm.rsa_pss_rsae_sha256,
@@ -587,13 +602,14 @@ public abstract class TlsCryptoTest
 
     public void testSignatures13() throws Exception
     {
-        int[] signatureSchemes = new int[] { SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256,
+        int[] signatureSchemes = new int[]{ SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256,
             SignatureScheme.ecdsa_brainpoolP384r1tls13_sha384, SignatureScheme.ecdsa_brainpoolP512r1tls13_sha512,
             SignatureScheme.ecdsa_secp256r1_sha256, SignatureScheme.ecdsa_secp384r1_sha384,
             SignatureScheme.ecdsa_secp521r1_sha512, SignatureScheme.ed25519, SignatureScheme.ed448,
             SignatureScheme.rsa_pss_pss_sha256, SignatureScheme.rsa_pss_pss_sha384, SignatureScheme.rsa_pss_pss_sha512,
             SignatureScheme.rsa_pss_rsae_sha256, SignatureScheme.rsa_pss_rsae_sha384,
-            SignatureScheme.rsa_pss_rsae_sha512, SignatureScheme.sm2sig_sm3,
+            SignatureScheme.rsa_pss_rsae_sha512, SignatureScheme.sm2sig_sm3, SignatureScheme.mldsa44,
+            SignatureScheme.mldsa65, SignatureScheme.mldsa87,
             // These are only used for certs in 1.3 (cert verification is not done by TlsCrypto)
 //            SignatureScheme.ecdsa_sha1, SignatureScheme.rsa_pkcs1_sha1, SignatureScheme.rsa_pkcs1_sha256,
 //            SignatureScheme.rsa_pkcs1_sha384, SignatureScheme.rsa_pkcs1_sha512,

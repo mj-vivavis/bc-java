@@ -190,6 +190,36 @@ public final class Arrays
         return nonEqual == 0;
     }
 
+    public static boolean constantTimeAreEqual(
+        long[]  expected,
+        long[]  supplied)
+    {
+        if (expected == null || supplied == null)
+        {
+            return false;
+        }
+
+        if (expected == supplied)
+        {
+            return true;
+        }
+
+        int len = (expected.length < supplied.length) ? expected.length : supplied.length;
+
+        long nonEqual = expected.length ^ supplied.length;
+
+        for (int i = 0; i != len; i++)
+        {
+            nonEqual |= (expected[i] ^ supplied[i]);
+        }
+        for (int i = len; i < supplied.length; i++)
+        {
+            nonEqual |= (supplied[i] ^ ~supplied[i]);
+        }
+
+        return nonEqual == 0;
+    }
+
     public static int compareUnsigned(byte[] a, byte[] b)
     {
         if (a == b)
@@ -1209,6 +1239,27 @@ public final class Arrays
         }
     }
 
+    public static void clear(long[] data)
+    {
+        if (null != data)
+        {
+            java.util.Arrays.fill(data, 0);
+        }
+    }
+
+    /**
+     * Fill input array by zeros
+     *
+     * @param data input array
+     */
+    public static void clear(char[] data)
+    {
+        if (null != data)
+        {
+            java.util.Arrays.fill(data, (char)0x00);
+        }
+    }
+
     public static boolean isNullOrContainsNull(Object[] array)
     {
         if (null == array)
@@ -1239,5 +1290,39 @@ public final class Arrays
     public static boolean isNullOrEmpty(Object[] array)
     {
         return null == array || array.length < 1;
+    }
+
+    public static boolean segmentsOverlap(int aOff, int aLen, int bOff, int bLen)
+    {
+        return aLen > 0
+            && bLen > 0
+            && aOff - bOff < bLen
+            && bOff - aOff < aLen;
+    }
+
+    public static void validateRange(byte[] buf, int from, int to)
+    {
+        if (buf == null)
+        {
+            throw new NullPointerException("'buf' cannot be null");
+        }
+        if ((from | (buf.length - from) | (to - from) | (buf.length - to)) < 0)
+        {
+            throw new IndexOutOfBoundsException("buf.length: " + buf.length + ", from: " + from + ", to: " + to);
+        }
+    }
+
+    public static void validateSegment(byte[] buf, int off, int len)
+    {
+        if (buf == null)
+        {
+            throw new NullPointerException("'buf' cannot be null");
+        }
+        int available = buf.length - off;
+        int remaining = available - len;
+        if ((off | len | available | remaining) < 0)
+        {
+            throw new IndexOutOfBoundsException("buf.length: " + buf.length + ", off: " + off + ", len: " + len);
+        }
     }
 }

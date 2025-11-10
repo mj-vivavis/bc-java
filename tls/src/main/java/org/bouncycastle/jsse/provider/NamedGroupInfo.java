@@ -1,6 +1,7 @@
 package org.bouncycastle.jsse.provider;
 
 import java.security.AlgorithmParameters;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -20,6 +21,7 @@ import org.bouncycastle.tls.TlsUtils;
 import org.bouncycastle.tls.crypto.impl.jcajce.JcaTlsCrypto;
 import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.Integers;
+import org.bouncycastle.util.Properties;
 
 class NamedGroupInfo
 {
@@ -78,14 +80,21 @@ class NamedGroupInfo
         OQS_mlkem512(NamedGroup.OQS_mlkem512, "ML-KEM"),
         OQS_mlkem768(NamedGroup.OQS_mlkem768, "ML-KEM"),
         OQS_mlkem1024(NamedGroup.OQS_mlkem1024, "ML-KEM"),
-        DRAFT_mlkem768(NamedGroup.DRAFT_mlkem768, "ML-KEM"),
-        DRAFT_mlkem1024(NamedGroup.DRAFT_mlkem1024, "ML-KEM");
+        MLKEM512(NamedGroup.MLKEM512, "ML-KEM"),
+        MLKEM768(NamedGroup.MLKEM768, "ML-KEM"),
+        MLKEM1024(NamedGroup.MLKEM1024, "ML-KEM"),
+
+        SecP256r1MLKEM768(NamedGroup.SecP256r1MLKEM768, "EC", "ML-KEM"),
+        X25519MLKEM768(NamedGroup.X25519MLKEM768, "ML-KEM", "XDH"),
+        SecP384r1MLKEM1024(NamedGroup.SecP384r1MLKEM1024, "EC", "ML-KEM");
 
         private final int namedGroup;
         private final String name;
         private final String text;
-        private final String jcaAlgorithm;
-        private final String jcaGroup;
+        private final String jcaAlgorithm1;
+        private final String jcaAlgorithm2;
+        private final String jcaGroup1;
+        private final String jcaGroup2;
         private final boolean char2;
         private final boolean supportedPost13;
         private final boolean supportedPre13;
@@ -94,16 +103,44 @@ class NamedGroupInfo
 
         private All(int namedGroup, String jcaAlgorithm)
         {
+            if (NamedGroup.refersToASpecificHybrid(namedGroup))
+            {
+                throw new IllegalArgumentException("Non-hybrid constructor only");
+            }
+
             this.namedGroup = namedGroup;
             this.name = NamedGroup.getName(namedGroup);
             this.text = NamedGroup.getText(namedGroup);
-            this.jcaAlgorithm = jcaAlgorithm;
-            this.jcaGroup = NamedGroup.getStandardName(namedGroup);
+            this.jcaAlgorithm1 = jcaAlgorithm;
+            this.jcaAlgorithm2 = null;
+            this.jcaGroup1 = NamedGroup.getStandardName(namedGroup);
+            this.jcaGroup2 = null;
             this.supportedPost13 = NamedGroup.canBeNegotiated(namedGroup, ProtocolVersion.TLSv13);
             this.supportedPre13 = NamedGroup.canBeNegotiated(namedGroup, ProtocolVersion.TLSv12);
             this.char2 = NamedGroup.isChar2Curve(namedGroup);
             this.bitsECDH = NamedGroup.getCurveBits(namedGroup);
             this.bitsFFDHE = NamedGroup.getFiniteFieldBits(namedGroup);
+        }
+
+        private All(int namedGroup, String jcaAlgorithm1, String jcaAlgorithm2)
+        {
+            if (!NamedGroup.refersToASpecificHybrid(namedGroup))
+            {
+                throw new IllegalArgumentException("Hybrid constructor only");
+            }
+
+            this.namedGroup = namedGroup;
+            this.name = NamedGroup.getName(namedGroup);
+            this.text = NamedGroup.getText(namedGroup);
+            this.jcaAlgorithm1 = jcaAlgorithm1;
+            this.jcaAlgorithm2 = jcaAlgorithm2;
+            this.jcaGroup1 = NamedGroup.getStandardName(NamedGroup.getHybridFirst(namedGroup));
+            this.jcaGroup2 = NamedGroup.getStandardName(NamedGroup.getHybridSecond(namedGroup));
+            this.supportedPost13 = NamedGroup.canBeNegotiated(namedGroup, ProtocolVersion.TLSv13);
+            this.supportedPre13 = NamedGroup.canBeNegotiated(namedGroup, ProtocolVersion.TLSv12);
+            this.char2 = false;
+            this.bitsECDH = -1;
+            this.bitsFFDHE = -1;
         }
     }
 
@@ -119,15 +156,16 @@ class NamedGroupInfo
         NamedGroup.ffdhe2048,
         NamedGroup.ffdhe3072,
         NamedGroup.ffdhe4096,
+        NamedGroup.X25519MLKEM768,
     };
 
     static class PerConnection
     {
-        private final LinkedHashMap<Integer, NamedGroupInfo> local;
+        private final Map<Integer, NamedGroupInfo> local;
         private final boolean localECDSA;
         private final AtomicReference<List<NamedGroupInfo>> peer;
 
-        PerConnection(LinkedHashMap<Integer, NamedGroupInfo> local, boolean localECDSA)
+        PerConnection(Map<Integer, NamedGroupInfo> local, boolean localECDSA)
         {
             if (local == null)
             {
@@ -162,6 +200,28 @@ class NamedGroupInfo
         {
             this.index = index;
             this.candidates = candidates;
+        }
+    }
+
+    static class DefaultedResult
+    {
+        private final int result;
+        private final boolean defaulted;
+
+        DefaultedResult(int result, boolean defaulted)
+        {
+            this.result = result;
+            this.defaulted = defaulted;
+        }
+
+        int getResult()
+        {
+            return result;
+        }
+
+        boolean isDefaulted()
+        {
+            return defaulted;
         }
     }
 
@@ -227,7 +287,7 @@ class NamedGroupInfo
         return new PerContext(index, candidates);
     }
 
-    static int getMaximumBitsServerECDH(PerConnection perConnection)
+    static DefaultedResult getMaximumBitsServerECDH(PerConnection perConnection)
     {
         int maxBits = 0;
         List<NamedGroupInfo> peer = perConnection.getPeer();
@@ -257,10 +317,10 @@ class NamedGroupInfo
                 maxBits = Math.max(maxBits, namedGroupInfo.getBitsECDH());
             }
         }
-        return maxBits;
+        return new DefaultedResult(maxBits, peer == null);
     }
 
-    static int getMaximumBitsServerFFDHE(PerConnection perConnection)
+    static DefaultedResult getMaximumBitsServerFFDHE(PerConnection perConnection)
     {
         int maxBits = 0;
         boolean anyPeerFF = false;
@@ -294,7 +354,7 @@ class NamedGroupInfo
                 maxBits = Math.max(maxBits, namedGroupInfo.getBitsFFDHE());
             }
         }
-        return maxBits;
+        return new DefaultedResult(maxBits, !anyPeerFF);
     }
 
     static NamedGroupInfo getNamedGroup(PerContext perContext, int namedGroup)
@@ -329,7 +389,7 @@ class NamedGroupInfo
         return perConnection.local.containsKey(namedGroup);
     }
 
-    static int selectServerECDH(PerConnection perConnection, int minimumBitsECDH)
+    static DefaultedResult selectServerECDH(PerConnection perConnection, int minimumBitsECDH)
     {
         List<NamedGroupInfo> peer = perConnection.getPeer();
         if (peer != null)
@@ -341,7 +401,7 @@ class NamedGroupInfo
                     int namedGroup = namedGroupInfo.getNamedGroup();
                     if (perConnection.local.containsKey(namedGroup))
                     {
-                        return namedGroup;
+                        return new DefaultedResult(namedGroup, false);
                     }
                 }
             }
@@ -357,14 +417,14 @@ class NamedGroupInfo
             {
                 if (namedGroupInfo.getBitsECDH() >= minimumBitsECDH)
                 {
-                    return namedGroupInfo.getNamedGroup();
+                    return new DefaultedResult(namedGroupInfo.getNamedGroup(), true);
                 }
             }
         }
-        return -1;
+        return new DefaultedResult(-1, peer == null);
     }
 
-    static int selectServerFFDHE(PerConnection perConnection, int minimumBitsFFDHE)
+    static DefaultedResult selectServerFFDHE(PerConnection perConnection, int minimumBitsFFDHE)
     {
         boolean anyPeerFF = false;
         List<NamedGroupInfo> peer = perConnection.getPeer();
@@ -379,7 +439,7 @@ class NamedGroupInfo
                 {
                     if (perConnection.local.containsKey(namedGroup))
                     {
-                        return namedGroup;
+                        return new DefaultedResult(namedGroup, false);
                     }
                 }
             }
@@ -395,11 +455,11 @@ class NamedGroupInfo
             {
                 if (namedGroupInfo.getBitsFFDHE() >= minimumBitsFFDHE)
                 {
-                    return namedGroupInfo.getNamedGroup();
+                    return new DefaultedResult(namedGroupInfo.getNamedGroup(), true);
                 }
             }
         }
-        return -1;
+        return new DefaultedResult(-1, !anyPeerFF);
     }
 
     private static void addNamedGroup(boolean isFipsContext, JcaTlsCrypto crypto, boolean disableChar2,
@@ -415,23 +475,37 @@ class NamedGroupInfo
 
         boolean disable = (disableChar2 && all.char2) || (disableFFDHE && all.bitsFFDHE > 0);
 
-        boolean enabled = !disable && (null != all.jcaGroup) && crypto.hasNamedGroup(namedGroup);
+        boolean enabled = !disable && (null != all.jcaGroup1) && (null == all.jcaAlgorithm2 || null != all.jcaGroup2)
+            && TlsUtils.isSupportedNamedGroup(crypto, namedGroup);
 
-        AlgorithmParameters algorithmParameters = null;
+        AlgorithmParameters algorithmParameters1 = null;
+        AlgorithmParameters algorithmParameters2 = null;
+
         if (enabled)
         {
-            // TODO[jsse] Consider also fetching 'jcaAlgorithm'
+            // TODO[jsse] Consider also fetching 'jcaAlgorithm1', 'jcaAlgorithm2'
+
             try
             {
-                algorithmParameters = crypto.getNamedGroupAlgorithmParameters(namedGroup);
+                if (NamedGroup.refersToASpecificHybrid(namedGroup))
+                {
+                    algorithmParameters1 = getAlgorithmParameters(crypto, NamedGroup.getHybridFirst(namedGroup));
+                    algorithmParameters2 = getAlgorithmParameters(crypto, NamedGroup.getHybridSecond(namedGroup));
+                }
+                else
+                {
+                    algorithmParameters1 = getAlgorithmParameters(crypto, namedGroup);
+                }
             }
             catch (Exception e)
             {
                 enabled = false;
+                algorithmParameters1 = null;
+                algorithmParameters2 = null;
             }
         }
 
-        NamedGroupInfo namedGroupInfo = new NamedGroupInfo(all, algorithmParameters, enabled);
+        NamedGroupInfo namedGroupInfo = new NamedGroupInfo(all, algorithmParameters1, algorithmParameters2, enabled);
 
         if (null != ng.put(namedGroup, namedGroupInfo))
         {
@@ -495,7 +569,7 @@ class NamedGroupInfo
 
         final boolean disableChar2 =
             PropertyUtils.getBooleanSystemProperty("org.bouncycastle.jsse.ec.disableChar2", false) ||
-            PropertyUtils.getBooleanSystemProperty("org.bouncycastle.ec.disable_f2m", false);
+            Properties.isOverrideSet("org.bouncycastle.ec.disable_f2m");
 
         final boolean disableFFDHE = !PropertyUtils.getBooleanSystemProperty("jsse.enableFFDHE", true);
 
@@ -505,6 +579,12 @@ class NamedGroupInfo
         }
 
         return ng;
+    }
+
+    private static AlgorithmParameters getAlgorithmParameters(JcaTlsCrypto crypto, int namedGroup)
+        throws GeneralSecurityException
+    {
+        return crypto.getNamedGroupAlgorithmParameters(namedGroup);
     }
 
     private static int getNamedGroupByName(String name)
@@ -565,13 +645,16 @@ class NamedGroupInfo
     }
 
     private final All all;
-    private final AlgorithmParameters algorithmParameters;
+    private final AlgorithmParameters algorithmParameters1;
+    private final AlgorithmParameters algorithmParameters2;
     private final boolean enabled;
 
-    NamedGroupInfo(All all, AlgorithmParameters algorithmParameters, boolean enabled)
+    NamedGroupInfo(All all, AlgorithmParameters algorithmParameters1, AlgorithmParameters algorithmParameters2,
+        boolean enabled)
     {
         this.all = all;
-        this.algorithmParameters = algorithmParameters;
+        this.algorithmParameters1 = algorithmParameters1;
+        this.algorithmParameters2 = algorithmParameters2;
         this.enabled = enabled;
     }
 
@@ -583,16 +666,6 @@ class NamedGroupInfo
     int getBitsFFDHE()
     {
         return all.bitsFFDHE;
-    }
-
-    String getJcaAlgorithm()
-    {
-        return all.jcaAlgorithm;
-    }
-
-    String getJcaGroup()
-    {
-        return all.jcaGroup;
     }
 
     int getNamedGroup()
@@ -632,7 +705,21 @@ class NamedGroupInfo
     {
         Set<BCCryptoPrimitive> primitives = JsseUtils.KEY_AGREEMENT_CRYPTO_PRIMITIVES_BC;
 
-        return algorithmConstraints.permits(primitives, getJcaGroup(), null)
-            && algorithmConstraints.permits(primitives, getJcaAlgorithm(), algorithmParameters);
+        if (!algorithmConstraints.permits(primitives, all.jcaGroup1, null) ||
+            !algorithmConstraints.permits(primitives, all.jcaAlgorithm1, algorithmParameters1))
+        {
+            return false;
+        }
+
+        if (all.jcaAlgorithm2 != null)
+        {
+            if (!algorithmConstraints.permits(primitives, all.jcaGroup2, null) ||
+                !algorithmConstraints.permits(primitives, all.jcaAlgorithm2, algorithmParameters2))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

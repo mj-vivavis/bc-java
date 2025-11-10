@@ -123,6 +123,19 @@ public abstract class ECCurve
         return new Config(this.coord, this.endomorphism, this.multiplier);
     }
 
+    public int getFieldElementEncodingLength()
+    {
+        return (getFieldSize() + 7) / 8;
+    }
+
+    public int getAffinePointEncodingLength(boolean compressed)
+    {
+        int fieldLength = getFieldElementEncodingLength();
+        return compressed
+            ?  1 + fieldLength
+            :  1 + fieldLength * 2;
+    }
+
     public ECPoint validatePoint(BigInteger x, BigInteger y)
     {
         ECPoint p = createPoint(x, y);
@@ -379,7 +392,7 @@ public abstract class ECCurve
     public ECPoint decodePoint(byte[] encoded)
     {
         ECPoint p = null;
-        int expectedLength = (getFieldSize() + 7) / 8;
+        int expectedLength = getFieldElementEncodingLength();
 
         byte type = encoded[0];
         switch (type)
@@ -463,25 +476,15 @@ public abstract class ECCurve
      */
     public ECLookupTable createCacheSafeLookupTable(final ECPoint[] points, int off, final int len)
     {
-        final int FE_BYTES = (getFieldSize() + 7) >>> 3;
-
+        final int FE_BYTES = getFieldElementEncodingLength();
         final byte[] table = new byte[len * FE_BYTES * 2];
+        int pos = 0;
+        for (int i = 0; i < len; ++i)
         {
-            int pos = 0;
-            for (int i = 0; i < len; ++i)
-            {
-                ECPoint p = points[off + i];
-                byte[] px = p.getRawXCoord().toBigInteger().toByteArray();
-                byte[] py = p.getRawYCoord().toBigInteger().toByteArray();
-
-                int pxStart = px.length > FE_BYTES ? 1 : 0, pxLen = px.length - pxStart;
-                int pyStart = py.length > FE_BYTES ? 1 : 0, pyLen = py.length - pyStart;
-
-                System.arraycopy(px, pxStart, table, pos + FE_BYTES - pxLen, pxLen); pos += FE_BYTES;
-                System.arraycopy(py, pyStart, table, pos + FE_BYTES - pyLen, pyLen); pos += FE_BYTES;
-            }
+            ECPoint p = points[off + i];
+            p.getRawXCoord().encodeTo(table, pos);      pos += FE_BYTES;
+            p.getRawYCoord().encodeTo(table, pos);      pos += FE_BYTES;
         }
-
         return new AbstractECLookupTable()
         {
             public int getSize()
@@ -593,9 +596,14 @@ public abstract class ECCurve
             super(FiniteFields.getPrimeField(q));
         }
 
+        public BigInteger getQ()
+        {
+            return getField().getCharacteristic();
+        }
+
         public boolean isValidFieldElement(BigInteger x)
         {
-            return x != null && x.signum() >= 0 && x.compareTo(this.getField().getCharacteristic()) < 0;
+            return x != null && x.signum() >= 0 && x.compareTo(getQ()) < 0;
         }
 
         public ECFieldElement randomFieldElement(SecureRandom r)
@@ -604,7 +612,7 @@ public abstract class ECCurve
              * NOTE: BigInteger comparisons in the rejection sampling are not constant-time, so we
              * use the product of two independent elements to mitigate side-channels.
              */
-            BigInteger p = getField().getCharacteristic();
+            BigInteger p = getQ();
             ECFieldElement fe1 = fromBigInteger(implRandomFieldElement(r, p));
             ECFieldElement fe2 = fromBigInteger(implRandomFieldElement(r, p));
             return fe1.multiply(fe2);
@@ -616,7 +624,7 @@ public abstract class ECCurve
              * NOTE: BigInteger comparisons in the rejection sampling are not constant-time, so we
              * use the product of two independent elements to mitigate side-channels.
              */
-            BigInteger p = getField().getCharacteristic();
+            BigInteger p = getQ();
             ECFieldElement fe1 = fromBigInteger(implRandomFieldElementMult(r, p));
             ECFieldElement fe2 = fromBigInteger(implRandomFieldElementMult(r, p));
             return fe1.multiply(fe2);
@@ -683,6 +691,8 @@ public abstract class ECCurve
         /**
          * @deprecated use constructor taking order/cofactor
          */
+        @Deprecated
+        @SuppressWarnings("InlineMeSuggester")
         public Fp(BigInteger q, BigInteger a, BigInteger b)
         {
             this(q, a, b, null, null);
@@ -699,12 +709,11 @@ public abstract class ECCurve
 
             if (isInternal)
             {
-                this.q = q;
                 knownQs.add(q);
             }
             else if (knownQs.contains(q) || validatedQs.contains(q))
             {
-                this.q = q;
+                // No need to validate
             }
             else
             {
@@ -724,10 +733,9 @@ public abstract class ECCurve
                 }
 
                 validatedQs.add(q);
-
-                this.q = q;
             }
 
+            this.q = q;
             this.r = ECFieldElement.Fp.calculateResidue(q);
             this.infinity = new ECPoint.Fp(this, null, null);
 
@@ -1147,6 +1155,8 @@ public abstract class ECCurve
          * <code>F<sub>2<sup>m</sup></sub></code>.
          * @deprecated use constructor taking order/cofactor
          */
+        @Deprecated
+        @SuppressWarnings("InlineMeSuggester")
         public F2m(
             int m,
             int k,
@@ -1205,6 +1215,8 @@ public abstract class ECCurve
          * <code>F<sub>2<sup>m</sup></sub></code>.
          * @deprecated use constructor taking order/cofactor
          */
+        @Deprecated
+        @SuppressWarnings("InlineMeSuggester")
         public F2m(
             int m,
             int k1,

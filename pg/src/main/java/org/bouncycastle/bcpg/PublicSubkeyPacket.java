@@ -9,11 +9,20 @@ import java.util.Date;
 public class PublicSubkeyPacket 
     extends PublicKeyPacket
 {
+
     PublicSubkeyPacket(
-        BCPGInputStream    in)
+            BCPGInputStream    in)
+            throws IOException
+    {
+        this(in, false);
+    }
+
+    PublicSubkeyPacket(
+        BCPGInputStream    in,
+        boolean newPacketFormat)
         throws IOException
     {      
-        super(PUBLIC_SUBKEY, in);
+        super(PUBLIC_SUBKEY, in, newPacketFormat);
     }
     
     /**
@@ -22,7 +31,10 @@ public class PublicSubkeyPacket
      * @param algorithm
      * @param time
      * @param key
+     * @deprecated use versioned {@link #PublicSubkeyPacket(int, int, Date, BCPGKey)} instead
      */
+    @Deprecated
+    @SuppressWarnings("InlineMeSuggester")
     public PublicSubkeyPacket(
         int       algorithm,
         Date      time,
